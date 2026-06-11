@@ -1,0 +1,7 @@
+# Never commit secrets
+.env
+.env.local
+*.env
+
+# Docker override with real credentials (use docker-compose.override.yml locally)
+docker-compose.override.yml
