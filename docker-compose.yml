@@ -1,0 +1,105 @@
+services:
+
+  # ─── VPN ───────────────────────────────────────────────────────────────────
+  # All qBittorrent traffic exits through ProtonVPN via WireGuard.
+  # Fill in your WireGuard credentials in the environment block below.
+  # Get them from: https://account.proton.me/u/0/vpn/WireGuard
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - VPN_TYPE=wireguard
+      # ── Fill these in from your ProtonVPN WireGuard config ──
+      - WIREGUARD_PRIVATE_KEY=       # PrivateKey from [Interface]
+      - WIREGUARD_ADDRESSES=         # Address from [Interface]  e.g. 10.2.0.2/32
+      - VPN_ENDPOINT_IP=             # Endpoint IP from [Peer]   e.g. 185.159.157.5
+      - VPN_ENDPOINT_PORT=51820      # Endpoint port (usually 51820)
+      - WIREGUARD_PUBLIC_KEY=        # PublicKey from [Peer]
+    ports:
+      - 8080:8080   # qBittorrent Web UI — internal only, do not expose publicly
+    restart: unless-stopped
+
+  # ─── qBittorrent ───────────────────────────────────────────────────────────
+  # Runs inside gluetun's network so ALL torrent traffic goes through the VPN.
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: service:gluetun   # shares gluetun's network + VPN tunnel
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York         # change to your timezone
+      - WEBUI_PORT=8080
+    volumes:
+      - D:\Home Media\config\qbittorrent:/config
+      - D:\Home Media\Downloads:/downloads
+    restart: unless-stopped
+    depends_on:
+      - gluetun
+
+  # ─── Prowlarr ──────────────────────────────────────────────────────────────
+  # Indexer manager — connects to Radarr and Sonarr automatically.
+  # Access at http://<your-tailscale-hostname>:9696
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - D:\Home Media\config\prowlarr:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+
+  # ─── FlareSolverr ──────────────────────────────────────────────────────────
+  # Bypasses Cloudflare for certain indexers. Add it in Prowlarr as a proxy.
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=info
+      - TZ=America/New_York
+    ports:
+      - 8191:8191
+    restart: unless-stopped
+
+  # ─── Radarr ────────────────────────────────────────────────────────────────
+  # Movies. Access at http://<your-tailscale-hostname>:7878
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - D:\Home Media\config\radarr:/config
+      - D:\Home Media\Movies:/movies
+      - D:\Home Media\Downloads:/downloads
+    ports:
+      - 7878:7878
+    restart: unless-stopped
+
+  # ─── Sonarr ────────────────────────────────────────────────────────────────
+  # TV shows. Access at http://<your-tailscale-hostname>:8989
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - D:\Home Media\config\sonarr:/config
+      - D:\Home Media\TV:/tv
+      - D:\Home Media\Downloads:/downloads
+    ports:
+      - 8989:8989
+    restart: unless-stopped
