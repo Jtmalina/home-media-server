@@ -100,3 +100,32 @@ services:
     ports:
       - 8989:8989
     restart: unless-stopped
+
+  # ─── Tdarr ─────────────────────────────────────────────────────────────────
+  # Automated transcoding for Plex compatibility. Access at http://<tailscale-hostname>:8265
+  # First-run setup: enable the node, add libraries pointing at /media/movies and /media/tv,
+  # then import or build a flow (community "Plex Compatible" preset recommended).
+  tdarr:
+    image: ghcr.io/haveagitgat/tdarr:latest
+    container_name: tdarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/New_York}
+      - serverIP=0.0.0.0
+      - serverPort=8266
+      - webUIPort=8265
+      - internalNode=true
+      - internalNodeIP=0.0.0.0
+      - nodeName=MainNode
+    volumes:
+      - D:\Home Media\config\tdarr\server:/app/server
+      - D:\Home Media\config\tdarr\configs:/app/configs
+      - D:\Home Media\config\tdarr\logs:/app/logs
+      - D:\Home Media\Movies:/media/movies
+      - D:\Home Media\TV:/media/tv
+      - D:\Home Media\transcode_cache:/temp
+    ports:
+      - 8265:8265
+      - 8266:8266
+    restart: unless-stopped
