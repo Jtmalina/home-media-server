@@ -28,6 +28,7 @@ with minimal manual steps.
 | FlareSolverr | 8191 | Cloudflare bypass proxy (used by Prowlarr) |
 | qBittorrent | 8080 | Torrent client — internal only, behind VPN |
 | Gluetun | — | VPN container (ProtonVPN WireGuard) |
+| Tdarr | 8265 | Automated transcoding for Plex compatibility |
 
 qBittorrent uses `network_mode: service:gluetun` — all its traffic exits
 through the VPN. Radarr/Sonarr talk to qBittorrent at host `gluetun:8080`
@@ -68,22 +69,33 @@ Once containers are running, connect the apps to each other:
 - Settings → Download Clients → Add qBittorrent: host `gluetun`, port `8080`
 - Settings → Media Management → Root Folder → `/tv`
 
-### 3. OmniList settings update
+### 3. Tdarr first-run setup
+After `docker compose up -d`, open http://localhost:8265:
+
+1. **Nodes** tab — confirm `MainNode` shows as connected and enabled
+2. **Libraries** tab → Add Library:
+   - Movies: source path `/media/movies`, transcode cache `/temp`
+   - TV: source path `/media/tv`, transcode cache `/temp`
+3. **Flows** tab → Community → search "Plex" → import the **"Plex Compatible"** flow
+4. Assign the flow to each library and enable scanning
+
+Tdarr will scan your library, flag incompatible files, and transcode them in the background.
+The `D:\Home Media\transcode_cache` folder is used as scratch space — it can grow large during
+transcoding but clears automatically when done.
+
+### 4. OmniList settings update
 After confirming services are reachable, update the Servarr config in OmniList
-(gear icon → settings) with the Tailscale URLs:
-- Radarr: `http://desktop-mcopf27.tail2717ef.ts.net:7878`
-- Sonarr: `http://desktop-mcopf27.tail2717ef.ts.net:8989`
+(gear icon → settings) with the Tailscale Funnel URLs:
+- Radarr: `https://desktop-mcopf27.tail2717ef.ts.net`
+- Sonarr: `https://desktop-mcopf27.tail2717ef.ts.net:8443`
 
-Note: use `http://` not `https://` — Tailscale encrypts the tunnel and these
-services don't have TLS certs configured.
+Note: use `https://` — Tailscale Funnel provides TLS termination.
 
-### 4. Sonarr Tailscale port
-Sonarr previously needed to be funneled through port 8443 due to Tailscale
-Funnel port restrictions. With Docker the service binds directly to the host
-on port 8989, so it should be reachable on the Tailscale LAN (not Funnel)
-at port 8989 without any port remapping. Verify this works after setup.
+### 5. Sonarr Tailscale port
+Sonarr is exposed via Tailscale Funnel on port 8443 (Funnel only supports 443, 8443, 10000).
+Funnel proxies 8443 → localhost:8989. This is already configured and working.
 
-### 5. Auto-start verification
+### 6. Auto-start verification
 Docker Desktop starts with Windows and `restart: unless-stopped` handles
 container restarts. After a reboot, verify all containers come back up:
 ```powershell

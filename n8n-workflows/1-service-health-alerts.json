@@ -1,0 +1,127 @@
+{
+  "name": "Media Server - Service Health Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://radarr:7878/api/v3/system/status?apikey=a0820d7c3b224ac193b952be5c7ba7ff",
+        "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
+      },
+      "id": "check-radarr",
+      "name": "Check Radarr",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://sonarr:8989/api/v3/system/status?apikey=15da690a3ce44ac397cc5663201266b5",
+        "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
+      },
+      "id": "check-sonarr",
+      "name": "Check Sonarr",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://prowlarr:9696/api/v1/system/status?apikey=7711dece6ef04bf9a2caa387f1854dd3",
+        "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
+      },
+      "id": "check-prowlarr",
+      "name": "Check Prowlarr",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://gluetun:8080/api/v2/app/version",
+        "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
+      },
+      "id": "check-qbittorrent",
+      "name": "Check qBittorrent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://tdarr:8265",
+        "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
+      },
+      "id": "check-tdarr",
+      "name": "Check Tdarr",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:32400/identity",
+        "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
+      },
+      "id": "check-plex",
+      "name": "Check Plex",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const checks = [\n  { name: 'Radarr', data: $('Check Radarr').first().json },\n  { name: 'Sonarr', data: $('Check Sonarr').first().json },\n  { name: 'Prowlarr', data: $('Check Prowlarr').first().json },\n  { name: 'qBittorrent', data: $('Check qBittorrent').first().json },\n  { name: 'Tdarr', data: $('Check Tdarr').first().json },\n  { name: 'Plex', data: $('Check Plex').first().json },\n];\n\nconst down = checks.filter(c => {\n  const d = c.data;\n  return !d || d.statusCode >= 400 || d.error || d.code === 'ECONNREFUSED';\n}).map(c => c.name);\n\nif (down.length === 0) return [];\n\nreturn [{ json: { downServices: down, count: down.length } }];"
+      },
+      "id": "find-down",
+      "name": "Find Down Services",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "jmalina7897@gmail.com",
+        "toEmail": "jmalina7897@gmail.com",
+        "subject": "⚠️ Media Server Alert - Services Down",
+        "text": "=The following services are not responding:\n\n{{ $json.downServices.join('\\n') }}\n\nTime: {{ $now.toISO() }}"
+      },
+      "id": "send-alert",
+      "name": "Send Alert Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1760, 300],
+      "credentials": {
+        "smtp": { "id": "1", "name": "SMTP account" }
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": { "main": [[{ "node": "Check Radarr", "type": "main", "index": 0 }]] },
+    "Check Radarr": { "main": [[{ "node": "Check Sonarr", "type": "main", "index": 0 }]] },
+    "Check Sonarr": { "main": [[{ "node": "Check Prowlarr", "type": "main", "index": 0 }]] },
+    "Check Prowlarr": { "main": [[{ "node": "Check qBittorrent", "type": "main", "index": 0 }]] },
+    "Check qBittorrent": { "main": [[{ "node": "Check Tdarr", "type": "main", "index": 0 }]] },
+    "Check Tdarr": { "main": [[{ "node": "Check Plex", "type": "main", "index": 0 }]] },
+    "Check Plex": { "main": [[{ "node": "Find Down Services", "type": "main", "index": 0 }]] },
+    "Find Down Services": { "main": [[{ "node": "Send Alert Email", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" }
+}
