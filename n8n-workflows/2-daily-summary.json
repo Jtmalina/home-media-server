@@ -40,7 +40,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://sonarr:8989/api/v3/system/status?apikey=15da690a3ce44ac397cc5663201266b5",
+        "url": "http://sonarr:8989/api/v3/system/status?apikey=f424ffb2d4334c18a9e20ced54444167",
         "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
       },
       "id": "check-sonarr",
@@ -52,7 +52,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://sonarr:8989/api/v3/queue?apikey=15da690a3ce44ac397cc5663201266b5",
+        "url": "http://sonarr:8989/api/v3/queue?apikey=f424ffb2d4334c18a9e20ced54444167",
         "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
       },
       "id": "sonarr-queue",
@@ -111,13 +111,25 @@
     },
     {
       "parameters": {
-        "jsCode": "const status = (node) => {\n  try {\n    const d = $(node).first().json;\n    return (!d || d.statusCode >= 400 || d.error || d.code === 'ECONNREFUSED') ? '❌ Down' : '✅ Online';\n  } catch(e) { return '❌ Down'; }\n};\n\nconst radarrQueue = $('Radarr Queue').first().json?.totalRecords ?? 0;\nconst sonarrQueue = $('Sonarr Queue').first().json?.totalRecords ?? 0;\n\nconst date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\n\nconst body = `📺 Media Server Daily Summary - ${date}\n\n═══════════════════════════\nSERVICE STATUS\n═══════════════════════════\nRadarr (Movies):    ${status('Check Radarr')}\nSonarr (TV):        ${status('Check Sonarr')}\nProwlarr:           ${status('Check Prowlarr')}\nqBittorrent/VPN:    ${status('Check qBittorrent')}\nTdarr:              ${status('Check Tdarr')}\nPlex:               ${status('Check Plex')}\n\n═══════════════════════════\nDOWNLOAD QUEUE\n═══════════════════════════\nMovies downloading:  ${radarrQueue}\nTV downloading:      ${sonarrQueue}\n\n═══════════════════════════\nQUICK LINKS\n═══════════════════════════\nRadarr:      http://localhost:7878\nSonarr:      http://localhost:8989\nqBittorrent: http://localhost:8080\nTdarr:       http://localhost:8265\nn8n:         http://localhost:5678\n`;\n\nreturn [{ json: { body, subject: '📺 Media Server Summary - ' + date } }];"
+        "method": "GET",
+        "url": "http://host.docker.internal:9182/metrics",
+        "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
+      },
+      "id": "system-metrics",
+      "name": "System Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const status = (node) => {\n  try {\n    const d = $(node).first().json;\n    return (!d || d.statusCode >= 400 || d.error || d.code === 'ECONNREFUSED') ? '❌ Down' : '✅ Online';\n  } catch(e) { return '❌ Down'; }\n};\n\nconst radarrQueue = $('Radarr Queue').first().json?.totalRecords ?? 0;\nconst sonarrQueue = $('Sonarr Queue').first().json?.totalRecords ?? 0;\n\n// Parse prometheus metrics\nconst parseMetric = (text, name) => {\n  const match = text.match(new RegExp(`^${name}\\\\s+([\\\\d.e+]+)`, 'm'));\n  return match ? parseFloat(match[1]) : null;\n};\n\nconst parseMetricLabeled = (text, name, label) => {\n  const match = text.match(new RegExp(`^${name}\\\\{[^}]*${label}[^}]*\\\\}\\\\s+([\\\\d.e+]+)`, 'm'));\n  return match ? parseFloat(match[1]) : null;\n};\n\nlet sysSection = 'Unavailable';\ntry {\n  const metrics = $('System Metrics').first().json;\n  const raw = typeof metrics === 'string' ? metrics : JSON.stringify(metrics);\n\n  const memAvail = parseMetric(raw, 'windows_os_physical_memory_free_bytes');\n  const memTotal = parseMetric(raw, 'windows_os_visible_memory_bytes');\n  const memUsedPct = memTotal && memAvail ? Math.round((1 - memAvail / memTotal) * 100) : null;\n\n  // Disk free for D:\n  const diskFreeMatch = raw.match(/windows_logical_disk_free_bytes\\{volume=\"D:\"\\}\\s+([\\d.e+]+)/);\n  const diskTotalMatch = raw.match(/windows_logical_disk_size_bytes\\{volume=\"D:\"\\}\\s+([\\d.e+]+)/);\n  const diskFreeGB = diskFreeMatch ? (parseFloat(diskFreeMatch[1]) / 1e9).toFixed(0) : null;\n  const diskTotalGB = diskTotalMatch ? (parseFloat(diskTotalMatch[1]) / 1e9).toFixed(0) : null;\n\n  // Thermalzone temps\n  const tempMatches = [...raw.matchAll(/windows_thermalzone_temperature_celsius\\{[^}]+\\}\\s+([\\d.e+]+)/g)];\n  const temps = tempMatches.map(m => parseFloat(m[1]).toFixed(1));\n  const maxTemp = temps.length ? Math.max(...temps.map(Number)).toFixed(1) : null;\n\n  sysSection = [\n    memUsedPct !== null ? `RAM Usage:           ${memUsedPct}% (${((memTotal - memAvail)/1e9).toFixed(1)} / ${(memTotal/1e9).toFixed(1)} GB)` : 'RAM Usage:           Unavailable',\n    diskFreeGB !== null ? `Disk D: Free:        ${diskFreeGB} GB / ${diskTotalGB} GB` : 'Disk D: Free:        Unavailable',\n    maxTemp !== null ? `Peak Temp:           ${maxTemp}°C` : 'Peak Temp:           Unavailable',\n  ].join('\\n');\n} catch(e) {\n  sysSection = 'Error reading metrics: ' + e.message;\n}\n\nconst date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\n\nconst body = `📺 Media Server Daily Summary - ${date}\n\n═══════════════════════════\nSERVICE STATUS\n═══════════════════════════\nRadarr (Movies):    ${status('Check Radarr')}\nSonarr (TV):        ${status('Check Sonarr')}\nProwlarr:           ${status('Check Prowlarr')}\nqBittorrent/VPN:    ${status('Check qBittorrent')}\nTdarr:              ${status('Check Tdarr')}\nPlex:               ${status('Check Plex')}\n\n═══════════════════════════\nDOWNLOAD QUEUE\n═══════════════════════════\nMovies downloading:  ${radarrQueue}\nTV downloading:      ${sonarrQueue}\n\n═══════════════════════════\nSYSTEM HEALTH\n═══════════════════════════\n${sysSection}\n\n═══════════════════════════\nQUICK LINKS\n═══════════════════════════\nRadarr:      http://localhost:7878\nSonarr:      http://localhost:8989\nqBittorrent: http://localhost:8080\nTdarr:       http://localhost:8265\nn8n:         http://localhost:5678\n`;\n\nreturn [{ json: { body, subject: '📺 Media Server Summary - ' + date } }];"
       },
       "id": "build-summary",
       "name": "Build Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1980, 300]
+      "position": [2200, 300]
     },
     {
       "parameters": {
@@ -130,7 +142,7 @@
       "name": "Send Summary Email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [2200, 300],
+      "position": [2420, 300],
       "credentials": {
         "smtp": { "id": "1", "name": "SMTP account" }
       }
@@ -145,7 +157,8 @@
     "Check Prowlarr": { "main": [[{ "node": "Check qBittorrent", "type": "main", "index": 0 }]] },
     "Check qBittorrent": { "main": [[{ "node": "Check Tdarr", "type": "main", "index": 0 }]] },
     "Check Tdarr": { "main": [[{ "node": "Check Plex", "type": "main", "index": 0 }]] },
-    "Check Plex": { "main": [[{ "node": "Build Summary", "type": "main", "index": 0 }]] },
+    "Check Plex": { "main": [[{ "node": "System Metrics", "type": "main", "index": 0 }]] },
+    "System Metrics": { "main": [[{ "node": "Build Summary", "type": "main", "index": 0 }]] },
     "Build Summary": { "main": [[{ "node": "Send Summary Email", "type": "main", "index": 0 }]] }
   },
   "active": true,

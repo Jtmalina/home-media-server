@@ -28,7 +28,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://sonarr:8989/api/v3/system/status?apikey=15da690a3ce44ac397cc5663201266b5",
+        "url": "http://sonarr:8989/api/v3/system/status?apikey=f424ffb2d4334c18a9e20ced54444167",
         "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
       },
       "id": "check-sonarr",
@@ -87,26 +87,38 @@
     },
     {
       "parameters": {
-        "jsCode": "const checks = [\n  { name: 'Radarr', data: $('Check Radarr').first().json },\n  { name: 'Sonarr', data: $('Check Sonarr').first().json },\n  { name: 'Prowlarr', data: $('Check Prowlarr').first().json },\n  { name: 'qBittorrent', data: $('Check qBittorrent').first().json },\n  { name: 'Tdarr', data: $('Check Tdarr').first().json },\n  { name: 'Plex', data: $('Check Plex').first().json },\n];\n\nconst down = checks.filter(c => {\n  const d = c.data;\n  return !d || d.statusCode >= 400 || d.error || d.code === 'ECONNREFUSED';\n}).map(c => c.name);\n\nif (down.length === 0) return [];\n\nreturn [{ json: { downServices: down, count: down.length } }];"
+        "method": "GET",
+        "url": "http://host.docker.internal:9182/metrics",
+        "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
       },
-      "id": "find-down",
-      "name": "Find Down Services",
+      "id": "system-metrics",
+      "name": "System Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Thresholds ──────────────────────────────\nconst RAM_ALERT_PCT   = 90;   // alert if RAM usage exceeds this %\nconst TEMP_ALERT_C    = 85;   // alert if any thermal zone exceeds this °C\nconst DISK_MIN_GB     = 50;   // alert if D: free space drops below this GB\n\n// ── Service checks ──────────────────────────\nconst checks = [\n  { name: 'Radarr',      node: 'Check Radarr' },\n  { name: 'Sonarr',      node: 'Check Sonarr' },\n  { name: 'Prowlarr',    node: 'Check Prowlarr' },\n  { name: 'qBittorrent', node: 'Check qBittorrent' },\n  { name: 'Tdarr',       node: 'Check Tdarr' },\n  { name: 'Plex',        node: 'Check Plex' },\n];\n\nconst downServices = checks.filter(c => {\n  try {\n    const d = $(c.node).first().json;\n    return !d || d.statusCode >= 400 || d.error || d.code === 'ECONNREFUSED';\n  } catch(e) { return true; }\n}).map(c => c.name);\n\n// ── System metric checks ─────────────────────\nconst sysAlerts = [];\n\ntry {\n  const raw = $('System Metrics').first().json;\n  const text = typeof raw === 'string' ? raw : JSON.stringify(raw);\n\n  // RAM\n  const memAvail = parseFloat((text.match(/windows_os_physical_memory_free_bytes\\s+([\\d.e+]+)/) || [])[1]);\n  const memTotal = parseFloat((text.match(/windows_os_visible_memory_bytes\\s+([\\d.e+]+)/) || [])[1]);\n  if (memTotal && memAvail) {\n    const usedPct = Math.round((1 - memAvail / memTotal) * 100);\n    if (usedPct >= RAM_ALERT_PCT) {\n      sysAlerts.push(`RAM usage critical: ${usedPct}% used (${((memTotal - memAvail)/1e9).toFixed(1)} / ${(memTotal/1e9).toFixed(1)} GB)`);\n    }\n  }\n\n  // Disk D:\n  const diskFree = parseFloat((text.match(/windows_logical_disk_free_bytes\\{volume=\"D:\"\\}\\s+([\\d.e+]+)/) || [])[1]);\n  if (diskFree) {\n    const freeGB = diskFree / 1e9;\n    if (freeGB < DISK_MIN_GB) {\n      sysAlerts.push(`Disk D: low: ${freeGB.toFixed(0)} GB remaining`);\n    }\n  }\n\n  // Temps\n  const tempMatches = [...text.matchAll(/windows_thermalzone_temperature_celsius\\{[^}]+\\}\\s+([\\d.e+]+)/g)];\n  for (const m of tempMatches) {\n    const temp = parseFloat(m[1]);\n    if (temp >= TEMP_ALERT_C) {\n      sysAlerts.push(`High temperature: ${temp.toFixed(1)}°C`);\n      break; // one alert is enough\n    }\n  }\n} catch(e) {\n  // if metrics are unavailable, don't block service alerts\n}\n\nconst allAlerts = [\n  ...downServices.map(s => `❌ Service down: ${s}`),\n  ...sysAlerts.map(s => `⚠️ ${s}`),\n];\n\nif (allAlerts.length === 0) return [];\n\nreturn [{ json: { alerts: allAlerts, count: allAlerts.length } }];"
+      },
+      "id": "find-alerts",
+      "name": "Find Alerts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1540, 300]
+      "position": [1760, 300]
     },
     {
       "parameters": {
         "fromEmail": "jmalina7897@gmail.com",
         "toEmail": "jmalina7897@gmail.com",
-        "subject": "⚠️ Media Server Alert - Services Down",
-        "text": "=The following services are not responding:\n\n{{ $json.downServices.join('\\n') }}\n\nTime: {{ $now.toISO() }}"
+        "subject": "⚠️ Media Server Alert",
+        "text": "=The following issues were detected on your media server:\n\n{{ $json.alerts.join('\\n') }}\n\nTime: {{ $now.toISO() }}"
       },
       "id": "send-alert",
       "name": "Send Alert Email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [1760, 300],
+      "position": [1980, 300],
       "credentials": {
         "smtp": { "id": "1", "name": "SMTP account" }
       }
@@ -119,8 +131,9 @@
     "Check Prowlarr": { "main": [[{ "node": "Check qBittorrent", "type": "main", "index": 0 }]] },
     "Check qBittorrent": { "main": [[{ "node": "Check Tdarr", "type": "main", "index": 0 }]] },
     "Check Tdarr": { "main": [[{ "node": "Check Plex", "type": "main", "index": 0 }]] },
-    "Check Plex": { "main": [[{ "node": "Find Down Services", "type": "main", "index": 0 }]] },
-    "Find Down Services": { "main": [[{ "node": "Send Alert Email", "type": "main", "index": 0 }]] }
+    "Check Plex": { "main": [[{ "node": "System Metrics", "type": "main", "index": 0 }]] },
+    "System Metrics": { "main": [[{ "node": "Find Alerts", "type": "main", "index": 0 }]] },
+    "Find Alerts": { "main": [[{ "node": "Send Alert Email", "type": "main", "index": 0 }]] }
   },
   "active": true,
   "settings": { "executionOrder": "v1" }
