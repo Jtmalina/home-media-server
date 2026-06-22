@@ -29,10 +29,16 @@ with minimal manual steps.
 | qBittorrent | 8080 | Torrent client — internal only, behind VPN |
 | Gluetun | — | VPN container (ProtonVPN WireGuard) |
 | Tdarr | 8265 | Automated transcoding for Plex compatibility |
+| n8n | 5678 | Workflow automation — media pipeline monitoring |
+| Pi-hole | 8088 | Network-wide DNS ad blocking (web UI; DNS on 53) |
 
 qBittorrent uses `network_mode: service:gluetun` — all its traffic exits
 through the VPN. Radarr/Sonarr talk to qBittorrent at host `gluetun:8080`
 on the internal Docker network.
+
+**Plex** runs natively on Windows (not in Docker), reachable from containers
+at `host.docker.internal:32400`. **windows_exporter** runs as a native Windows
+service (not in Docker) — see "System metrics" below.
 
 ## What's missing / still needs to be done
 
@@ -101,6 +107,51 @@ container restarts. After a reboot, verify all containers come back up:
 ```powershell
 docker compose ps
 ```
+
+## System metrics (windows_exporter)
+
+The n8n monitoring workflows (RAM/temp/disk alerts + daily summary) pull host
+metrics from **windows_exporter**, which runs as a **native Windows service**
+(not in Docker). n8n scrapes it at `http://host.docker.internal:9182/metrics`.
+
+Install (one-time, admin PowerShell):
+```powershell
+# Download the MSI (or grab latest from github.com/prometheus-community/windows_exporter/releases)
+msiexec /i "C:\Temp\windows_exporter.msi" /quiet `
+  ENABLED_COLLECTORS="cpu,memory,logical_disk,os,thermalzone" LISTEN_PORT="9182"
+```
+
+**Gotcha:** the collector for per-volume free space is `logical_disk`, **not**
+`disk`. If you use `disk`, no disk metrics appear and the workflows show D: as
+"Unavailable". Also, re-running the MSI caches the original `ENABLED_COLLECTORS`
+and ignores changes — to fix the collectors after install, edit the service
+directly (admin):
+```powershell
+sc.exe config windows_exporter binPath= "C:\PROGRA~1\windows_exporter\windows_exporter.exe --log.file eventlog --collectors.enabled cpu,memory,logical_disk,os,thermalzone"
+Restart-Service windows_exporter
+```
+
+Verify it's serving the expected metrics:
+```powershell
+(Invoke-RestMethod "http://localhost:9182/metrics") -split "`n" |
+  Select-String 'windows_logical_disk_free_bytes\{volume="D:"\}'
+```
+
+Metrics consumed by the workflows:
+- `windows_os_physical_memory_free_bytes` / `windows_os_visible_memory_bytes` — RAM %
+- `windows_logical_disk_free_bytes{volume="D:"}` — D: free space
+- `windows_thermalzone_temperature_celsius{...}` — temps
+
+## n8n monitoring workflows
+
+Importable JSON lives in `n8n-workflows/`. After importing, link the Gmail SMTP
+credential to the email nodes and toggle each workflow **Active**.
+- `1-service-health-alerts.json` — every 5 min; emails on any service down,
+  low disk, or RAM/temp spikes sustained across 2 consecutive checks.
+- `2-daily-summary.json` — 8am daily status email (service status, download
+  queues, system health).
+
+Email uses Gmail SMTP (`smtp.gmail.com:465`, SSL) with a Google App Password.
 
 ## Key commands
 
