@@ -165,3 +165,30 @@ services:
       - "53:53/udp"
       - "8088:80/tcp"   # Web UI — avoid port 80 conflict with other services
     restart: unless-stopped
+
+  # ─── Decluttarr ─────────────────────────────────────────────────────────────
+  # Watches Radarr/Sonarr queues and auto-removes stalled, slow, stuck-on-metadata,
+  # or failed downloads, then blocklists them so a working release is grabbed instead.
+  # API keys are read from .env (RADARR_KEY / SONARR_KEY).
+  decluttarr:
+    image: ghcr.io/manimatter/decluttarr:latest
+    container_name: decluttarr
+    environment:
+      TZ: ${TZ:-America/New_York}
+      TIMER: 10                      # check the queues every 10 minutes
+      MAX_STRIKES: 3                 # must fail the check 3 times before removal
+      MIN_SPEED: 100                 # KB/s floor for "slow"
+      REMOVE_STALLED: "True"         # remove stalled downloads (no connections)
+      REMOVE_SLOW: "True"            # remove downloads slower than MIN_SPEED
+      REMOVE_FAILED_DOWNLOADS: "True"  # remove downloads that failed
+      REMOVE_METADATA_MISSING: "True"  # remove downloads stuck fetching metadata
+      RADARR: |
+        - base_url: "http://radarr:7878"
+          api_key: "${RADARR_KEY}"
+      SONARR: |
+        - base_url: "http://sonarr:8989"
+          api_key: "${SONARR_KEY}"
+    restart: unless-stopped
+    depends_on:
+      - radarr
+      - sonarr
