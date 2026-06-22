@@ -40,7 +40,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://sonarr:8989/api/v3/system/status?apikey=f424ffb2d4334c18a9e20ced54444167",
+        "url": "http://sonarr:8989/api/v3/system/status?apikey=15da690a3ce44ac397cc5663201266b5",
         "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
       },
       "id": "check-sonarr",
@@ -52,7 +52,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://sonarr:8989/api/v3/queue?apikey=f424ffb2d4334c18a9e20ced54444167",
+        "url": "http://sonarr:8989/api/v3/queue?apikey=15da690a3ce44ac397cc5663201266b5",
         "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
       },
       "id": "sonarr-queue",
@@ -76,7 +76,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://gluetun:8080/api/v2/app/version",
+        "url": "http://gluetun:8080/",
         "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
       },
       "id": "check-qbittorrent",
