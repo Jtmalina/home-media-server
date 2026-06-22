@@ -16,7 +16,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://radarr:7878/api/v3/system/status?apikey=a0820d7c3b224ac193b952be5c7ba7ff",
+        "url": "=http://radarr:7878/api/v3/system/status?apikey={{ $env.RADARR_KEY }}",
         "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
       },
       "id": "check-radarr",
@@ -28,7 +28,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://sonarr:8989/api/v3/system/status?apikey=15da690a3ce44ac397cc5663201266b5",
+        "url": "=http://sonarr:8989/api/v3/system/status?apikey={{ $env.SONARR_KEY }}",
         "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
       },
       "id": "check-sonarr",
@@ -40,7 +40,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://prowlarr:9696/api/v1/system/status?apikey=7711dece6ef04bf9a2caa387f1854dd3",
+        "url": "=http://prowlarr:9696/api/v1/system/status?apikey={{ $env.PROWLARR_KEY }}",
         "options": { "timeout": 8000, "response": { "response": { "neverError": true } } }
       },
       "id": "check-prowlarr",

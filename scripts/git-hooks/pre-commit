@@ -1,0 +1,21 @@
+#!/bin/sh
+# Block commits that contain a likely API key (32-char hex string).
+# Radarr/Sonarr/Prowlarr API keys match this pattern. Secrets belong in
+# .env (gitignored) and should be referenced via ${VAR} or {{ $env.VAR }}.
+#
+# Install (from repo root):  cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# Bypass intentionally (rare) with: git commit --no-verify
+
+match=$(git diff --cached -U0 | grep -E '^\+' | grep -vE '^\+\+\+' | grep -oE '[a-f0-9]{32}' | head -1)
+
+if [ -n "$match" ]; then
+  echo "✖ Commit blocked: a 32-char hex string that looks like an API key was found in staged changes:"
+  echo "    $match"
+  echo ""
+  echo "  Move the secret into .env (gitignored) and reference it via \${VAR} (compose)"
+  echo "  or {{ \$env.VAR }} (n8n). If this is a genuine false positive, re-run with:"
+  echo "    git commit --no-verify"
+  exit 1
+fi
+
+exit 0
