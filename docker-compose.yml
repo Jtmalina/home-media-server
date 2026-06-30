@@ -141,6 +141,7 @@ services:
       - TZ=${TZ:-America/New_York}
       - N8N_SECURE_COOKIE=false
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false   # allow {{ $env.X }} in expressions
+      - NODE_FUNCTION_ALLOW_BUILTIN=http     # let Code nodes use require('http') (Prowlarr auto-toggle)
       # *arr API keys for the monitoring workflows — read from .env, referenced
       # in workflows as {{ $env.RADARR_KEY }} etc. so keys never live in tracked files.
       - RADARR_KEY=${RADARR_KEY}
